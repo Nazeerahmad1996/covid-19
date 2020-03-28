@@ -1,10 +1,10 @@
 import React from 'react';
-import { StyleSheet, Text, View, Alert, TouchableOpacity, SafeAreaView } from 'react-native';
+import { StyleSheet, Text, View, Alert, TouchableOpacity, SafeAreaView, FlatList } from 'react-native';
 import MapView from 'react-native-maps';
 import { Marker, Callout } from 'react-native-maps';
 import * as Permissions from 'expo-permissions';
 import Constants from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import StarRating from 'react-native-star-rating';
 import Modal from 'react-native-modal';
 
@@ -47,6 +47,55 @@ export default class App extends React.Component {
       feedbackStock: 0,
       Feedback: [],
       listFeedback: [],
+      listButtons: [
+        {
+          name: 'Covid',
+          id: 5,
+          place: 'hospital',
+          icon: 'hospital',
+          keyword: 'doctor',
+          isTrue: true,
+          type: 'health'
+        },
+        {
+          name: 'Pharmacy',
+          id: 0,
+          place: 'pharmacy',
+          icon: 'pharmacy',
+          keyword: 'health',
+          isTrue: false,
+          type: 'food'
+        },
+        {
+          name: 'Store',
+          id: 2,
+          place: 'grocery_or_supermarket',
+          icon: 'store',
+          keyword: 'store',
+          isTrue: false,
+          type: 'food'
+        },
+        {
+          name: 'Restaurants',
+          id: 1,
+          place: 'restaurant',
+          icon: 'silverware-fork-knife',
+          keyword: 'food',
+          isTrue: false,
+          type: 'food'
+        },
+        {
+          name: 'Hotel',
+          id: 3,
+          place: 'hotel',
+          icon: 'bed-empty',
+          keyword: 'hotel',
+          isTrue: false,
+          type: 'room'
+        },
+      ],
+      place: 'store',
+      type: '',
     };
   }
 
@@ -65,7 +114,6 @@ export default class App extends React.Component {
 
 
   Vote = (feedbackStock) => {
-    console.log('state : ' + feedbackStock)
     let ref = firebase.database().ref().child('Rating').child(this.state.description.id);
     ref.push(
       {
@@ -128,6 +176,7 @@ export default class App extends React.Component {
 
 
   async componentDidMount() {
+    console.log('componentDidMount');
     if (Platform.OS === 'android' && !Constants.isDevice) {
       Alert.alert('Oops, this will not work on Sketch in an Android emulator. Try it on your device!');
       // this.setState({
@@ -159,9 +208,9 @@ export default class App extends React.Component {
               longitude: position.coords.longitude,
             }
 
-            let url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" + position.coords.longitude + "," + position.coords.latitude + "&radius=1500&type=store&keyworkd=grocery&key=AIzaSyA0AraK8GbVbOX4VkQYGONbeqldBEDX4rc"
+            let url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" + position.coords.longitude + "," + position.coords.latitude + "&radius=1500&type=hospital&keyworkd=doctor&key=AIzaSyA0AraK8GbVbOX4VkQYGONbeqldBEDX4rc"
 
-            fetch("https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" + position.coords.latitude + "," + position.coords.longitude + "&radius=1500&type=store&keyworkd=grocery&key=AIzaSyA0AraK8GbVbOX4VkQYGONbeqldBEDX4rc")
+            fetch("https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" + position.coords.latitude + "," + position.coords.longitude + "&radius=1500&type=hospital&keyworkd=doctor&key=AIzaSyA0AraK8GbVbOX4VkQYGONbeqldBEDX4rc")
               .then(response => response.json())
               .then((responseJson) => {
                 this.setState({
@@ -173,8 +222,8 @@ export default class App extends React.Component {
             this.setState({ region: UserRegion, marker: markers })
 
           },
-          error => Alert.alert(error.message),
-          { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
+          error => console.log(error.message),
+          { getPositionAsync: true, enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
         );
       }
     }
@@ -182,9 +231,30 @@ export default class App extends React.Component {
 
   }
 
+  Search = (item) => {
+    console.log('item: ' + item)
+    this.setState({ type: item.type, description: '' })
+    if (this.state.region) {
+      fetch("https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" + this.state.region.latitude + "," + this.state.region.longitude + "&radius=3500&type=" + item.place + "&keyworkd=" + item.keyword + "&key=AIzaSyA0AraK8GbVbOX4VkQYGONbeqldBEDX4rc")
+        .then(response => response.json())
+        .then((responseJson) => {
+          console.log(responseJson)
+          this.setState({
+            dataSource: responseJson.results
+          });
+
+          this.setState({
+            listButtons: this.state.listButtons.map(el => (el.id === item.id ? { ...el, isTrue: true } : { ...el, isTrue: false }))
+          });
+        })
+        .catch(error => console.log(error)) //to catch the errors if any
+    }
+  }
+
   markerClick = async (item) => {
     let d = this.distance(this.state.marker.latitude, this.state.marker.longitude, item.geometry.location.lat, item.geometry.location.lng)
     this.setState({ description: item, distance: d })
+
     let busy, stock;
     await firebase.database().ref('RatingAverage').child(item.id).once('value').then(function (snapshot) {
       busy = (snapshot.val() && snapshot.val().busy);
@@ -218,6 +288,7 @@ export default class App extends React.Component {
 
     return (
       <SafeAreaView style={styles.container}>
+
         <Modal
           onBackdropPress={() => this.toggleModal()}
           style={{ justifyContent: 'center', alignItems: 'center', flex: 1 }} isVisible={this.state.isModalVisible}>
@@ -226,7 +297,14 @@ export default class App extends React.Component {
             <View style={{ width: 150, marginVertical: 20 }}>
               <StarRating
                 selectedStar={(rating) => {
-                  this.setState({ feedbackRating: rating, isModalVisible: false, isModalStock: true });
+                  if (this.state.type === 'food') {
+                    this.setState({ feedbackRating: rating, isModalVisible: false, isModalStock: true });
+                  }
+                  else {
+                    this.setState({ feedbackRating: rating, isModalVisible: false },
+                      () => this.Vote(0));
+
+                  }
                 }}
                 starSize={40}
                 halfStarEnabled={false}
@@ -252,8 +330,7 @@ export default class App extends React.Component {
             <View style={{ width: 160, marginVertical: 20 }}>
               <StarRating
                 selectedStar={(rating) => {
-                  console.log('rating : ' + rating)
-                  this.setState({ isModalStock: false });
+                  this.setState({ isModalStock: false, feedbackStock: rating });
                   this.Vote(rating)
                 }}
                 starSize={36}
@@ -270,6 +347,10 @@ export default class App extends React.Component {
             </View>
           </View>
         </Modal>
+
+
+
+
         <MapView style={styles.mapStyle}
           initialRegion={this.state.region}
           showsUserLocation={true}
@@ -295,6 +376,23 @@ export default class App extends React.Component {
           })}
 
         </MapView>
+        <View style={{ position: 'absolute', top: 40, height: 60 }}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            legacyImplementation={false}
+            data={this.state.listButtons}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => this.Search(item)}
+                style={{ elevation: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: item.isTrue ? '#AF7AC5' : '#fff', marginLeft: 10, justifyContent: 'center', height: 40, paddingHorizontal: 12, borderRadius: 20 }}>
+                <MaterialCommunityIcons color={item.isTrue ? '#fff' : '#000'} name={item.icon} size={18} />
+                <Text style={{ marginLeft: 3, color: item.isTrue ? '#fff' : '#000' }}>{item.name}</Text>
+              </TouchableOpacity>
+            )}
+            keyExtractor={item => item.id.toString()}
+          />
+        </View>
         {this.state.description !== '' && (
           <View style={styles.BottomCard}>
             {(this.state.description.opening_hours !== undefined && !this.state.description.opening_hours.open_now) && (
@@ -340,7 +438,7 @@ export default class App extends React.Component {
                 </View>
                 <View style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}>
                   <Text onPress={this.stockModal} style={{ fontSize: 22, color: (this.state.description.opening_hours !== undefined && !this.state.description.opening_hours.open_now) ? '#c2c4c8' : this.state.feedbackStock === 5 ? '#ff6d41' : this.state.feedbackStock <= 2 ? '#85dda3' : '#fb9900', fontWeight: 'bold' }}>Stocks: </Text>
-                  {(this.state.description.opening_hours !== undefined && !this.state.description.opening_hours.open_now) ? (
+                  {((this.state.description.opening_hours !== undefined && !this.state.description.opening_hours.open_now) || this.state.type !== 'food') ? (
                     <Text style={{ fontSize: 22, color: '#c2c4c8', fontWeight: 'bold' }}>- -</Text>
                   ) : (
                       <StarRating
@@ -361,6 +459,7 @@ export default class App extends React.Component {
               </View>
 
             </View>
+
           </View>
         )}
 
